@@ -1,0 +1,7 @@
+A monitor for the RAID devices in a Thecus N5500, displaying updates on the
+LCD screen of the N5500 including current time.
+
+REQUIRES PYTHON 3
+
+see python3 ./pymonitor.py --help for usage
+
