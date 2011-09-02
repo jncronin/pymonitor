@@ -6,6 +6,7 @@ import monitor
 import send_thecus
 import time
 import smartctl_interface
+import apcaccess_interface
 
 parser = OptionParser(usage="usage: %prog [options]", version="%prog 1.0")
 parser.add_option("-p", "--port", action="store", type="string", dest="port",
@@ -23,16 +24,37 @@ parser.add_option("--stop", action="store_true", dest="stop",
 parser.add_option("-S", "--smartctl", action="store_true", dest="smartctl",
 		default=False, help="use smartctl to query the states of the drives")
 parser.add_option("--smartctl-delay", action="store", type="int", dest="smartctldelay", help="number of seconds before rechecking SMART status", default=60)
+parser.add_option("-U", "--apcaccess", action="store_true", dest="apcaccess",
+		default=False, help="use apcaccess to query the states of a ups")
+parser.add_option("--apcaccess-delay", action="store", type="int", dest="apcaccessdelay", help="number of seconds before rechecking UPS status", default=15)
 opts, args = parser.parse_args()
 
 def main_loop():
+	maintimer = 0
+
 	smarttimer = 0
+	apcaccesstimer = 0
+
+	next_info_count = 0
+	md_info_count = next_info_count
+	next_info_count += 1
+
+	if(opts.smartctl):
+		smartctl_info_count = next_info_count
+		next_info_count += 1
+
+	if(opts.apcaccess):
+		apcaccess_info_count = next_info_count
+		next_info_count += 1
 
 	while True:
 		msg1 = time.strftime("%d-%b-%Y %H:%M:%S")
 
 		if(opts.smartctl and smarttimer == 0):
 			raid_msg = smartctl_interface.get_smart_info()
+
+		if(opts.apcaccess and apcaccesstimer == 0):
+			apcaccess_msg = apcaccess_interface.get_apcaccess_info()
 
 		raid_db = monitor.get_status()
 		try:
@@ -48,8 +70,10 @@ def main_loop():
 		except:
 			msg2 = "RAID: not found"
 
-		if(opts.smartctl and smarttimer % 2 == 0):
+		if(opts.smartctl and maintimer % next_info_count == smartctl_info_count):
 			msg2 = raid_msg
+		if(opts.apcaccess and maintimer % next_info_count == apcaccess_info_count):
+			msg2 = apcaccess_msg
 
 		if opts.debug == True:
 			print(msg1)
@@ -62,6 +86,12 @@ def main_loop():
 		smarttimer += 1
 		if(smarttimer == opts.smartctldelay):
 			smarttimer = 0
+
+		apcaccesstimer += 1
+		if(apcaccesstimer == opts.apcaccessdelay):
+			apcaccesstimer = 0
+
+		maintimer += 1
 
 		time.sleep(1)
 
