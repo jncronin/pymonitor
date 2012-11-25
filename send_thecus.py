@@ -9,8 +9,8 @@ def send(msg_code, msg, port = '/dev/ttyS1', msg_id = 1):
 	new_msg = bytearray([msg_code])
 	new_msg.extend(msg)
 	
-	fd.write(struct.pack('>ccH%dsc' % len(new_msg), '\x02', '\x01',
-		len(new_msg), new_msg, '\x03'))
+	fd.write(struct.pack('>ccH%dsc' % len(new_msg), b'\x02', b'\x01',
+		len(new_msg), new_msg, b'\x03'))
 
 	fd.close()
 
@@ -30,6 +30,6 @@ if __name__ == '__main__':
 
 	try:
 		write_message(msg1, msg2)
-	except e as Exception:
+	except Exception as e:
 		print(e)
 
