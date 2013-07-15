@@ -7,6 +7,7 @@ import send_thecus
 import time
 import smartctl_interface
 import apcaccess_interface
+import sensors_interface
 
 parser = OptionParser(usage="usage: %prog [options]", version="%prog 1.0")
 parser.add_option("-p", "--port", action="store", type="string", dest="port",
@@ -27,6 +28,10 @@ parser.add_option("--smartctl-delay", action="store", type="int", dest="smartctl
 parser.add_option("-U", "--apcaccess", action="store_true", dest="apcaccess",
 		default=False, help="use apcaccess to query the states of a ups")
 parser.add_option("--apcaccess-delay", action="store", type="int", dest="apcaccessdelay", help="number of seconds before rechecking UPS status", default=15)
+parser.add_option("-T", "--sensors", action="store_true", dest="sensors",
+		default=False, help="use sensors to detect system temperature")
+parser.add_option("--sensors-delay", action="store", type="int", dest="sensorsdelay", help="number of seconds before rechecking sensors status", default=16)
+
 opts, args = parser.parse_args()
 
 def main_loop():
@@ -34,6 +39,7 @@ def main_loop():
 
 	smarttimer = 0
 	apcaccesstimer = 0
+	sensorstimer = 0
 
 	next_info_count = 0
 	md_info_count = next_info_count
@@ -47,6 +53,10 @@ def main_loop():
 		apcaccess_info_count = next_info_count
 		next_info_count += 1
 
+	if(opts.sensors):
+		sensors_info_count = next_info_count
+		next_info_count += 1
+
 	while True:
 		msg1 = time.strftime("%d-%b-%Y %H:%M:%S")
 
@@ -55,6 +65,9 @@ def main_loop():
 
 		if(opts.apcaccess and apcaccesstimer == 0):
 			apcaccess_msg = apcaccess_interface.get_apcaccess_info()
+
+		if(opts.sensors and sensorstimer == 0):
+			sensors_msg = sensors_interface.get_sensors_info()
 
 		raid_db = monitor.get_status()
 		try:
@@ -75,6 +88,9 @@ def main_loop():
 		if(opts.apcaccess and maintimer % next_info_count == apcaccess_info_count):
 			msg2 = apcaccess_msg
 
+		if(opts.sensors and maintimer % next_info_count == sensors_info_count):
+			msg2 = sensors_msg
+
 		if opts.debug == True:
 			print(msg1)
 			print(msg2)
@@ -90,6 +106,10 @@ def main_loop():
 		apcaccesstimer += 1
 		if(apcaccesstimer == opts.apcaccessdelay):
 			apcaccesstimer = 0
+
+		sensorstimer += 1
+		if(sensorstimer == opts.sensorsdelay):
+			sensorstimer = 0
 
 		maintimer += 1
 

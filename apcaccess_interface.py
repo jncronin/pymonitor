@@ -13,7 +13,10 @@ def run_apcaccess(cmd):
 	charge = apc_match_charge.search(oput)
 	status = apc_match_status.search(oput)
 
-	return "UPS: " + status.groups(0)[0] + " " + str(int(float(charge.groups(0)[0]))) + "%"
+	try:
+		return "UPS: " + status.groups(0)[0] + " " + str(int(float(charge.groups(0)[0]))) + "%"
+	except AttributeError:
+		return "UPS: not found"
 
 def get_apcaccess_info():
 	return run_apcaccess(apcaccess_command)
