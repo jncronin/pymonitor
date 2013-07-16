@@ -1,96 +1,98 @@
 #!/usr/bin/env python3.1
 
-from optparse import OptionParser
+import os, re, imp
 from daemon3x import daemon
-import monitor
-import send_thecus
+from optparse import OptionParser
 import time
-import smartctl_interface
-import apcaccess_interface
-import sensors_interface
+import send_thecus
 
-parser = OptionParser(usage="usage: %prog [options]", version="%prog 1.0")
+# Options
+parser = OptionParser("usage: %prog [options]", version="%prog 2.0")
 parser.add_option("-p", "--port", action="store", type="string", dest="port",
-		default="/dev/ttyS1", metavar="PORT", help="listen to AVR on PORT")
+		default="/dev/ttyS1", metavar="PORT", help="communicate with AVR on PORT")
 parser.add_option("-D", "--daemon", action="store_true", dest="daemon",
 		default=False, help="daemonize")
 parser.add_option("-d", action="store_true", dest="debug",
 		default=False, help="debug")
 parser.add_option("--pid-file", action="store", type="string", dest="pidfile",
 		default="/tmp/pymonitor.pid", help="pid-file location")
-parser.add_option("--raid-device", action="store", type="string", dest="rdev",
-		help="RAID device to monitor (default is first listed in mdstat)")
-parser.add_option("--stop", action="store_true", dest="stop",
-		default=False, help="stop a running daemon")
-parser.add_option("-S", "--smartctl", action="store_true", dest="smartctl",
-		default=False, help="use smartctl to query the states of the drives")
-parser.add_option("--smartctl-delay", action="store", type="int", dest="smartctldelay", help="number of seconds before rechecking SMART status", default=60)
-parser.add_option("-U", "--apcaccess", action="store_true", dest="apcaccess",
-		default=False, help="use apcaccess to query the states of a ups")
-parser.add_option("--apcaccess-delay", action="store", type="int", dest="apcaccessdelay", help="number of seconds before rechecking UPS status", default=15)
-parser.add_option("-T", "--sensors", action="store_true", dest="sensors",
-		default=False, help="use sensors to detect system temperature")
-parser.add_option("--sensors-delay", action="store", type="int", dest="sensorsdelay", help="number of seconds before rechecking sensors status", default=16)
-
+parser.add_option("--update-freq", action="store", type="int", dest="updatefreq",
+		default=15, help="number of seconds before requesting modules to update their output")
 opts, args = parser.parse_args()
 
+get_text = "get_text"
+get_update_freq = "get_update_freq"
+default_update_freq = opts.updatefreq
+
+# build a list of modules
+# the stagger value causes module updates to be staggered
+stagger = 0
+mod_dir = os.path.dirname(os.path.realpath(__file__))
+mods = []
+for file in os.listdir(mod_dir):
+	match = re.match(r"^(\S*)_interface.py$", file)
+	if match:
+		fname = os.path.join(mod_dir, file)
+		mname = match.groups(0)[0]
+		mod = imp.load_source(mname, fname)
+
+		mod_desc = { "name": mname, "mod": mod }
+		if get_text in dir(mod):
+			mod_desc[get_text] = mod.get_text
+		else:
+			mod_desc[get_text] = None
+
+		if get_update_freq in dir(mod):
+			mod_desc[get_update_freq] = mod.get_update_freq()
+		else:
+			mod_desc[get_update_freq] = default_update_freq
+
+		mod_desc[get_update_freq] = mod_desc[get_update_freq] + stagger
+		stagger = stagger + 1
+
+		mod_desc["text"] = None
+		mod_desc["countdown"] = 0
+		mods.append(mod_desc)
+
 def main_loop():
-	maintimer = 0
-
-	smarttimer = 0
-	apcaccesstimer = 0
-	sensorstimer = 0
-
-	next_info_count = 0
-	md_info_count = next_info_count
-	next_info_count += 1
-
-	if(opts.smartctl):
-		smartctl_info_count = next_info_count
-		next_info_count += 1
-
-	if(opts.apcaccess):
-		apcaccess_info_count = next_info_count
-		next_info_count += 1
-
-	if(opts.sensors):
-		sensors_info_count = next_info_count
-		next_info_count += 1
+	idx = 0
+	sub_idx = 0
 
 	while True:
+		# run gettext for each required module
+		for mod in mods:
+			if mod["countdown"] == 0:
+				if mod[get_text] != None:
+					mod["text"] = mod[get_text]()
+				else:
+					mod["text"] = []
+				mod["countdown"] = mod[get_update_freq]
+			else:
+				mod["countdown"] = mod["countdown"] - 1
+
+		# build the time string
 		msg1 = time.strftime("%d-%b-%Y %H:%M:%S")
 
-		if(opts.smartctl and smarttimer == 0):
-			raid_msg = smartctl_interface.get_smart_info()
+		# if zero-length mods, blank second line
+		if len(mods) == 0:
+			msg2 = ""
+		else:
+			# See if we've exceeded the sub index
+			while sub_idx >= len(mods[idx]["text"]) or mods[idx]["text"][sub_idx] == None:
+				sub_idx = 0
+				idx = idx + 1
 
-		if(opts.apcaccess and apcaccesstimer == 0):
-			apcaccess_msg = apcaccess_interface.get_apcaccess_info()
+				# See if we've exceeded the index
+				if idx >= len(mods):
+					idx = 0
 
-		if(opts.sensors and sensorstimer == 0):
-			sensors_msg = sensors_interface.get_sensors_info()
+			# Load the string
+			msg2 = mods[idx]["text"][sub_idx]
 
-		raid_db = monitor.get_status()
-		try:
-			if opts.rdev is None:
-				my_rdev = raid_db.values().__iter__().__next__()
-			else:
-				my_rdev = raid_db[opts.rdev]
+			# Increment counter for next run
+			sub_idx = sub_idx + 1
 
-			if my_rdev.status == "active":
-				msg2 = "RAID: Healthy"
-			else:
-				msg2 = "RAID: " + my_rdev.status
-		except:
-			msg2 = "RAID: not found"
-
-		if(opts.smartctl and maintimer % next_info_count == smartctl_info_count):
-			msg2 = raid_msg
-		if(opts.apcaccess and maintimer % next_info_count == apcaccess_info_count):
-			msg2 = apcaccess_msg
-
-		if(opts.sensors and maintimer % next_info_count == sensors_info_count):
-			msg2 = sensors_msg
-
+		## Display the messages
 		if opts.debug == True:
 			print(msg1)
 			print(msg2)
@@ -98,20 +100,6 @@ def main_loop():
 		else:
 			send_thecus.write_message(msg1 = msg1, msg2 = msg2,
 					port = opts.port)
-
-		smarttimer += 1
-		if(smarttimer == opts.smartctldelay):
-			smarttimer = 0
-
-		apcaccesstimer += 1
-		if(apcaccesstimer == opts.apcaccessdelay):
-			apcaccesstimer = 0
-
-		sensorstimer += 1
-		if(sensorstimer == opts.sensorsdelay):
-			sensorstimer = 0
-
-		maintimer += 1
 
 		time.sleep(1)
 
@@ -121,10 +109,7 @@ class MyDaemon(daemon):
 
 if opts.daemon == True:
 	d = MyDaemon(opts.pidfile)
-	if opts.stop == True:
-		d.stop()
-	else:
-		d.start()
+	d.start()
 else:
 	main_loop()
 

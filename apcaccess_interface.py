@@ -16,10 +16,13 @@ def run_apcaccess(cmd):
 	try:
 		return "UPS: " + status.groups(0)[0] + " " + str(int(float(charge.groups(0)[0]))) + "%"
 	except AttributeError:
-		return "UPS: not found"
+		return None
 
 def get_apcaccess_info():
 	return run_apcaccess(apcaccess_command)
+
+def get_text():
+	return [get_apcaccess_info()]
 
 if __name__ == "__main__":
 	print(get_apcaccess_info())

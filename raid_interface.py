@@ -27,6 +27,28 @@ def get_status():
 
 	return raid_dict
 
+def get_text():
+	raid_db = get_status()
+
+	if len(raid_db) == 0:
+		return []
+
+	ret = []
+	for name, rdev in raid_db.items():
+		if len(raid_db) == 1:
+			ret_name = "RAID"
+		else:
+			ret_name = name
+
+		if rdev.status == "active":
+			ret_status = "Healthy"
+		else:
+			ret_status = rdev.status
+
+		ret.append(ret_name + ": " + ret_status)
+	
+	return ret
+
 if __name__ == "__main__":
-	print(get_status())
+	print(get_text())
 

@@ -28,6 +28,9 @@ def get_smart_info():
 	
 	return ret + "]"
 
+def get_text():
+	return [get_smart_info()]
+
 if __name__ == "__main__":
 	print(get_smart_info())
 

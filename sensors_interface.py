@@ -19,6 +19,12 @@ def run_sensors(cmd):
 def get_sensors_info():
 	return run_sensors(sensors_command)
 
+def get_text():
+	return [get_sensors_info()]
+
+def get_update_freq():
+	return 15
+
 if __name__ == "__main__":
 	print(get_sensors_info())
 
